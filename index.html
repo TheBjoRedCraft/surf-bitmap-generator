@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Surf Bitmap Generator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="fonts/fonts.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">S</div>
+      <div>
+        <h1>Surf Bitmap Generator</h1>
+        <p class="muted">Erstellt Bitmaps für <code>surf-bitmap-provider</code> und zeigt sie im Minecraft-Chat</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn ghost" id="btn-import">Importieren</button>
+      <button class="btn ghost" id="btn-export">Exportieren</button>
+      <button class="btn ghost" id="btn-reset">Zurücksetzen</button>
+      <input type="file" id="file-import" accept=".json,application/json" hidden>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- ============ FORM ============ -->
+    <section class="form">
+
+      <div class="card">
+        <div class="card-head">
+          <h2>Bitmaps <span class="count" id="bitmap-count"></span></h2>
+          <div class="row-gap">
+            <button class="btn subtle small" id="btn-copy-all" title="Alle Bitmaps als YAML (key: &quot;minimessage&quot;) kopieren">Alle als YAML</button>
+            <button class="btn subtle small" id="add-bitmap">+ Bitmap</button>
+          </div>
+        </div>
+        <div class="bitmap-list" id="bitmap-list"></div>
+        <p class="hint">Jeder Eintrag erscheint in der Chat-Vorschau mit seinem Spielernamen. Klicken zum Bearbeiten.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>Bitmap bearbeiten</h2>
+          <code id="rank-key"></code>
+        </div>
+
+        <label class="field">
+          <span class="label">Text <em>input</em></span>
+          <input type="text" id="bm-text" placeholder="z. B. Admin" autocomplete="off" spellcheck="false">
+        </label>
+
+        <div class="grid-2">
+          <div class="field">
+            <span class="label">Vordergrund <em>foregroundColor</em></span>
+            <div class="color-field">
+              <input type="color" id="bm-fg-picker">
+              <input type="text" id="bm-fg" class="mono" autocomplete="off" spellcheck="false">
+            </div>
+          </div>
+          <div class="field">
+            <div class="label-row">
+              <span class="label">Hintergrund <em>backgroundColor</em></span>
+              <button class="link-btn" id="bm-swap" title="Vorder- und Hintergrund tauschen">⇄ tauschen</button>
+            </div>
+            <div class="color-field">
+              <input type="color" id="bm-bg-picker">
+              <input type="text" id="bm-bg" class="mono" autocomplete="off" spellcheck="false">
+            </div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="check">
+            <input type="checkbox" id="bm-shadow-on">
+            <span>Glyph-Schatten <em>shadowColor</em> – sonst <code>ShadowColor.none()</code></span>
+          </label>
+          <div class="grid-2" id="shadow-fields">
+            <div class="color-field">
+              <input type="color" id="bm-shadow-picker">
+              <input type="text" id="bm-shadow" class="mono" autocomplete="off" spellcheck="false">
+            </div>
+            <label class="inline-field">
+              <span>Alpha</span>
+              <input type="number" id="bm-shadow-alpha" min="0" max="255" step="1">
+            </label>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <label class="field">
+            <span class="label">Affix <em>affixAmount</em></span>
+            <input type="number" id="bm-affix" min="0" max="32" step="1">
+            <span class="hint">Hintergrund-Pixel links und rechts (Standard 2)</span>
+          </label>
+          <label class="field">
+            <span class="label">Spielername <span class="optional">Vorschau</span></span>
+            <input type="text" id="bm-player" placeholder="Steve" autocomplete="off" spellcheck="false">
+            <span class="hint">Wird im Chat für <code>&lt;player&gt;</code> eingesetzt</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>Prüfung</h2>
+          <span class="badge" id="validation-badge"></span>
+        </div>
+        <ul class="issues" id="issues"></ul>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>Zeichensatz</h2>
+          <span class="hint">Klicken fügt das Zeichen ein · <span class="legend-mismatch">markiert</span> = Breite weicht ab</span>
+        </div>
+        <div class="charset" id="charset"></div>
+      </div>
+    </section>
+
+    <!-- ============ PREVIEW ============ -->
+    <aside class="side">
+      <div class="card">
+        <div class="card-head">
+          <h2>Vorschau</h2>
+          <span class="hint" id="preview-info"></span>
+        </div>
+        <div class="mc-stage" id="preview-stage">
+          <canvas class="mc-canvas" id="preview-canvas"></canvas>
+        </div>
+        <div class="stage-bar">
+          <div class="segmented" id="preview-scale">
+            <button data-scale="auto" class="active">Auto</button>
+            <button data-scale="2">2×</button>
+            <button data-scale="4">4×</button>
+            <button data-scale="6">6×</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>MiniMessage-Ausgabe</h2>
+          <button class="btn primary small" id="btn-copy">Kopieren</button>
+        </div>
+        <div class="segmented" id="output-tabs">
+          <button data-out="minimessage">MiniMessage</button>
+          <button data-out="escaped">\u-escaped</button>
+          <button data-out="json">JSON</button>
+          <button data-out="tag">Chat-Tags</button>
+        </div>
+        <pre class="code" id="output"></pre>
+        <p class="hint" id="output-hint"></p>
+      </div>
+      <div class="card">
+        <div class="card-head">
+          <h2>Chat-Vorschau</h2>
+          <span class="hint" id="chat-info"></span>
+        </div>
+        <div class="mc-stage chat-stage" id="chat-stage">
+          <canvas class="mc-canvas" id="chat-canvas"></canvas>
+          <p class="hint" id="chat-empty" hidden>Keine Chatzeilen.</p>
+        </div>
+        <div class="stage-bar">
+          <div class="segmented" id="chat-scale">
+            <button data-scale="auto" class="active">Auto</button>
+            <button data-scale="1">1×</button>
+            <button data-scale="2">2×</button>
+            <button data-scale="3">3×</button>
+          </div>
+          <span class="hint warn" id="chat-note"></span>
+        </div>
+
+        <div class="field">
+          <div class="label-row">
+            <span class="label">Chatzeilen als MiniMessage <em>ingame parsebar</em></span>
+            <button class="btn ghost small" id="btn-copy-chat">Alle kopieren</button>
+          </div>
+          <div class="lines" id="chat-lines"></div>
+          <span class="hint">Platzhalter sind bereits ersetzt – der String kann 1:1 ingame mit MiniMessage geparst werden.</span>
+        </div>
+
+        <label class="switch">
+          <input type="checkbox" id="chat-auto">
+          <span class="track"></span>
+          <span>Eine Zeile pro Bitmap</span>
+        </label>
+        <div class="field" id="chat-format-fields">
+          <span class="label">Chat-Format <em>MiniMessage</em></span>
+          <input type="text" id="chat-format" class="mono" autocomplete="off" spellcheck="false">
+          <div class="grid-2">
+            <label class="field compact">
+              <span class="label">Nachricht <em>&lt;message&gt;</em></span>
+              <input type="text" id="chat-message" autocomplete="off">
+            </label>
+          </div>
+        </div>
+        <label class="field">
+          <span class="label">Weitere Zeilen <span class="optional">optional</span></span>
+          <textarea id="chat-extra" class="mono" rows="4" spellcheck="false" placeholder="&lt;rank:admin&gt; &lt;red&gt;Server-Neustart in 5 Minuten!&#10;&lt;bitmap:'Event':#FFFFFF:#AA00AA&gt; &lt;gradient:#34e1eb:#1fb2db&gt;Gleich geht's los"></textarea>
+          <span class="hint">Jede Zeile ist eine Chatnachricht (MiniMessage). <code>&lt;br&gt;</code> bricht innerhalb einer Nachricht um.</span>
+        </label>
+        <div class="insert-row">
+          <span class="sim-label">Einfügen</span>
+          <button class="chip" data-insert="<rank>">&lt;rank&gt;</button>
+          <button class="chip" data-insert="<player>">&lt;player&gt;</button>
+          <button class="chip" data-insert="<message>">&lt;message&gt;</button>
+          <button class="chip" data-insert="<rank:admin>">&lt;rank:key&gt;</button>
+          <button class="chip" data-insert="<bitmap:'Text':#FFFFFF:#000000>">&lt;bitmap:…&gt;</button>
+        </div>
+
+        <div class="sim">
+          <span class="sim-label">Darstellung</span>
+          <div class="sim-controls">
+            <select id="render-bg" title="Textur des Hintergrund-Glyphs ꑁ"></select>
+            <label class="sim-players">
+              <span>Chatbreite</span>
+              <input type="number" id="chat-width" min="40" max="1000" step="1">
+            </label>
+            <label class="check">
+              <input type="checkbox" id="render-shadows">
+              <span>Textschatten</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+    </aside>
+  </main>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="textures/textures.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
