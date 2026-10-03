@@ -438,6 +438,27 @@ const BITMAP_FONT = [
   { file: "euro.png", height: 8, ascent: 8, chars: ["ꑖ"] }, // template: bitmap_template (height 8)
 ];
 
+/* Small-Caps-Vorschau: Kapitälchen im Pixelstil wie fonts/build-fonts.py (+ s, x), nur zum Anschauen.
+ * Gezeichnet in derselben 6×7-Zelle wie bitmap.png (Zeile 1–5), Zeilen ab der 6. hängen unter die Grundlinie. */
+const SMALL_CAPS_ROWS = {
+  a: [".###.", "#...#", "#####", "#...#", "#...#"], b: ["####.", "#...#", "####.", "#...#", "####."],
+  c: [".####", "#....", "#....", "#....", ".####"], d: ["####.", "#...#", "#...#", "#...#", "####."],
+  e: ["#####", "#....", "####.", "#....", "#####"], f: ["#####", "#....", "####.", "#....", "#...."],
+  g: [".####", "#....", "#..##", "#...#", ".####"], h: ["#...#", "#...#", "#####", "#...#", "#...#"],
+  i: ["###", ".#.", ".#.", ".#.", "###"], j: ["....#", "....#", "....#", "#...#", ".###."],
+  k: ["#...#", "#..#.", "###..", "#..#.", "#...#"], l: ["#....", "#....", "#....", "#....", "#####"],
+  m: ["#...#", "##.##", "#.#.#", "#...#", "#...#"], n: ["#...#", "##..#", "#.#.#", "#..##", "#...#"],
+  o: [".###.", "#...#", "#...#", "#...#", ".###."], p: ["####.", "#...#", "####.", "#....", "#...."],
+  q: [".###.", "#...#", "#...#", "#...#", ".###.", "...#.", "....#"], r: ["####.", "#...#", "####.", "#..#.", "#...#"],
+  s: [".####", "#....", ".###.", "....#", "####."], t: ["#####", "..#..", "..#..", "..#..", "..#.."],
+  u: ["#...#", "#...#", "#...#", "#...#", ".###."], v: ["#...#", "#...#", ".#.#.", ".#.#.", "..#.."],
+  w: ["#...#", "#...#", "#.#.#", "##.##", "#...#"], x: ["#...#", ".#.#.", "..#..", ".#.#.", "#...#"],
+  y: ["#...#", ".#.#.", "..#..", "..#..", "..#.."], z: ["#####", "...#.", "..#..", ".#...", "#####"],
+};
+/* Bitmap-Buchstabe (AlphabetProvider) -> Vorschau-Zeichen ohne echte Font-Belegung */
+const SMALL_CAPS_PREVIEW = new Map([..."abcdefghijklmnopqrstuvwxyz"].map((c, i) =>
+  [String.fromCharCode(0xA411 + i), String.fromCharCode(0xF000 + i)]));
+
 const BACKGROUND_TEXTURES = {
   "background.png": "background.png (Alpha 128)",
   "background254.png": "background254.png (Alpha 254)",
@@ -510,6 +531,22 @@ function buildBitmapGlyphs() {
       });
     });
   }
+  buildSmallCapsGlyphs();
+}
+
+/** Small-Caps-Vorschau: gleiche Zelle und Advance (6) wie die Bitmap-Buchstaben, schmale Glyphen zentriert */
+function buildSmallCapsGlyphs() {
+  [..."abcdefghijklmnopqrstuvwxyz"].forEach((letter, i) => {
+    const rows = SMALL_CAPS_ROWS[letter];
+    const w = 6, h = 8, dx = Math.floor((5 - Math.max(...rows.map((r) => r.length))) / 2);
+    const data = new Uint8ClampedArray(w * h * 4);
+    rows.forEach((row, y) => [...row].forEach((c, x) => {
+      if (c === "#") data.fill(255, ((y + 1) * w + x + dx) * 4, ((y + 1) * w + x + dx) * 4 + 4);
+    }));
+    engine.bitmapGlyphs.set(String.fromCharCode(0xF000 + i), {
+      kind: "bitmap", w, h, f: 1, ascent: 7, data, advance: 6, file: "small caps (Vorschau)",
+    });
+  });
 }
 
 /** Rastert ein Zeichen der Minecraft-Schrift auf das Halbpixel-Raster (18 Einheiten/em, 1 MC-Pixel = 2 Einheiten). */
@@ -760,7 +797,7 @@ const slug = (s) => s.toLowerCase().replace(/ä/g, "ae").replace(/ö/g, "oe").re
 /* ---------- State ---------- */
 
 function newBitmap(text = "", bg = "#000000", player = "Steve") {
-  return { id: uid(), text, fg: "#FFFFFF", bg, shadowOn: false, shadow: "#000000", shadowAlpha: 255, affix: 2, player };
+  return { id: uid(), text, fg: "#FFFFFF", bg, shadowOn: false, shadow: "#000000", shadowAlpha: 255, affix: 2, smallCaps: false, player };
 }
 
 function defaultState() {
@@ -824,6 +861,14 @@ function bitmapComponent(b) {
   );
 }
 
+/** Nur für die Vorschau: Bitmap-Buchstaben durch die Small-Caps-Glyphen ersetzen (Ausgabe bleibt unverändert) */
+function previewComponent(b) {
+  const c = bitmapComponent(b);
+  if (!b.smallCaps) return c;
+  const swap = (n) => comp([...n.text].map((ch) => SMALL_CAPS_PREVIEW.get(ch) ?? ch).join(""), n.style, n.children.map(swap));
+  return swap(c);
+}
+
 function bitmapKey(b) {
   return slug(b.text) || "bitmap";
 }
@@ -859,6 +904,7 @@ function analyzeBitmap(b) {
     issues.push({ level: "warn", msg: `Glyph-Breite im Spiel weicht von der Provider-Breite ab: ${list}. Nachfolgende Glyphen laufen gegenüber dem Hintergrund auseinander.` });
   }
 
+  if (b.smallCaps) issues.push({ level: "info", msg: "Small Caps ist nur eine Vorschau – die MiniMessage-Ausgabe nutzt weiterhin die normalen Bitmap-Glyphen, ingame gibt es die Kapitälchen-Glyphen noch nicht." });
   if (parseHex6(b.fg) == null) issues.push({ level: "err", msg: "Ungültige Vordergrundfarbe – fällt auf Weiß zurück." });
   if (parseHex6(b.bg) == null) issues.push({ level: "err", msg: "Ungültige Hintergrundfarbe – fällt auf Schwarz zurück." });
   if (b.shadowOn && parseHex6(b.shadow) == null) issues.push({ level: "err", msg: "Ungültige Schattenfarbe – kein Schatten." });
@@ -869,7 +915,7 @@ function analyzeBitmap(b) {
 
 function thumbCanvas(b) {
   const canvas = el("canvas", { class: "thumb" });
-  renderScene(canvas, componentScene(bitmapComponent(b), state.render.shadows, 1), 2);
+  renderScene(canvas, componentScene(previewComponent(b), state.render.shadows, 1), 2);
   return canvas;
 }
 
@@ -936,6 +982,7 @@ function syncEditor() {
   $("#bm-player").value = b.player;
   $("#bm-affix").value = b.affix;
   $("#bm-shadow-on").checked = b.shadowOn;
+  $("#bm-small-caps").checked = !!b.smallCaps;
   $("#bm-shadow-alpha").value = b.shadowAlpha;
   for (const key of ["fg", "bg", "shadow"]) {
     $(`#bm-${key}`).value = b[key];
@@ -951,6 +998,7 @@ function bindEditor() {
   on("#bm-text", "input", (e) => { selectedBitmap().text = e.target.value; update(); });
   on("#bm-player", "input", (e) => { selectedBitmap().player = e.target.value; update(); });
   on("#bm-affix", "input", (e) => { selectedBitmap().affix = Math.max(0, Math.min(32, parseInt(e.target.value, 10) || 0)); update(); });
+  on("#bm-small-caps", "change", (e) => { selectedBitmap().smallCaps = e.target.checked; update(); });
   on("#bm-shadow-on", "change", (e) => { selectedBitmap().shadowOn = e.target.checked; syncEditor(); update(); });
   on("#bm-shadow-alpha", "input", (e) => { selectedBitmap().shadowAlpha = Math.max(0, Math.min(255, parseInt(e.target.value, 10) || 0)); update(); });
   for (const key of ["fg", "bg", "shadow"]) {
@@ -1042,9 +1090,9 @@ function chatResolvers(entry) {
   const fallback = entry ?? selectedBitmap();
   return {
     rank: (args) => {
-      if (!args.length) return bitmapComponent(fallback);
+      if (!args.length) return previewComponent(fallback);
       const ref = findBitmapRef(args.join(":"));
-      return ref ? bitmapComponent(ref) : null;
+      return ref ? previewComponent(ref) : null;
     },
     player: () => comp(fallback.player || "Steve"),
     message: () => comp(state.chat.message),
@@ -1158,7 +1206,7 @@ let obfuscationTimer = null;
 function renderPreviews() {
   const b = selectedBitmap();
 
-  const preview = componentScene(bitmapComponent(b), state.render.shadows);
+  const preview = componentScene(previewComponent(b), state.render.shadows);
   const previewScale = pickScale(scales.preview, $("#preview-stage"), preview.width, 8);
   renderScene($("#preview-canvas"), preview, previewScale);
   const bitmapWidth = preview.layouts[0]?.width ?? 0;
